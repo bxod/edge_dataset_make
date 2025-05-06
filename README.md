@@ -26,7 +26,7 @@ The workflow covers:
 
 ### 1.2 Folder Organization
 
-* Place all images in three separate folders under the dataset root:
+* Placed all images in three separate folders under the dataset root:
 
   ```
   dataset_root/
@@ -34,7 +34,7 @@ The workflow covers:
   ├── with_helmet/  (1,615 images)
   └── two_person/   (762 images)
   ```
-* Ensure all files are in **.jpg** format and within the **512×512 to 1080×1080** pixel range to match the SSDLite320–640 input requirements.
+* Ensure all images are in **.jpg** format and within the **512×512 to 1080×1080** pixel range to match the SSDLite320–640 input requirements.
 
 ---
 
@@ -42,18 +42,41 @@ The workflow covers:
 
 Use `shuffler.py` to randomly shuffle images within each class folder and rename them as `{class_name}_{order}.jpg`.
 
-Example:
+Run:
 
 ```bash
 python shuffler.py
-# Will rename images inside the given folder: with_helmet_1.jpg, with_helmet_2.jpg, ...
+# Will rename images inside the given folder. E.g. with_helmet_1.jpg, with_helmet_2.jpg, ...
 ```
 
 ---
 
-## 3. Auto-Labeling (Next Steps)
+## 3. Auto-Labeling
 
-*Coming soon: instructions on running the auto-labeling script to generate Pascal VOC XML annotations.*
+## 3.1 Install the following packages: 
+```bash
+pip install ultralytics
+pip install pillow
+```
+
+Make sure you have CUDA available if you are going to use GPU for auto detecting objects
+```bash
+python -c "import torch; print(torch.cuda.is_available())"
+```
+
+## 3.1 Create XML files
+Now run `xml_maker.py` to create XML labels for each class folder. Make sure you pass correct dataset root that contains the class folders with images e.g. `./dataset_root`
+```bash
+python xml_maker.py
+```
+
+You will now have XML label files created next to each image file. You can now split the dataset into train, test, validation subfolders according to PASCAL VOC format.
+
+---
+
+## Note 
+
+It is important to collect dataset of at least 4 classes to avoid issues with the project code. If you are having 3 or fewer classes, add a dummy class of one image along with its XML file to the final dataset. If you are planning to have 4 or more classes, you can ignore this note. Good luck.
 
 ---
 
@@ -65,4 +88,4 @@ python shuffler.py
 
 ---
 
-## Important: Leave a star!
+## Important: Leave a star! ⭐

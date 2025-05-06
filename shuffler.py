@@ -3,7 +3,6 @@ import random
 import uuid
 
 def shuffle_and_rename_images(folder_path='./with_helmet'):
-    # 1. List all files in the folder
     files = [f for f in os.listdir(folder_path)
              if os.path.isfile(os.path.join(folder_path, f))]
     if not files:
