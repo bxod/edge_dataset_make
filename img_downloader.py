@@ -7,14 +7,14 @@ class FilteredDownloader(ImageDownloader):
         from PIL import Image
         img = Image.open(task['file_path'])
         w, h = img.size
-        if not (512 <= w <= 1080 and 512 <= h <= 1080):
+        if not (512 <= w <= 1080 and 512 <= h <= 1080): # You may adjust the resolution as you need
             import os; os.remove(task['file_path'])
 
 queries = [
-    "dog"
+    "Your description goes here"
 ]
 
-crawler = GoogleImageCrawler(storage={'root_dir': 'dog'})
+crawler = GoogleImageCrawler(storage={'root_dir': 'downloaded'})
 crawler.crawl(keyword=queries[0],
               max_num=1000,
               file_idx_offset=0,

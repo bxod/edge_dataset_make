@@ -80,5 +80,5 @@ def process_dataset(root_dir):
 
 # Example usage: process a directory (you can replace with your dataset path)
 if __name__ == "__main__":
-    dataset_path = "./images"
+    dataset_path = "./dataset_root"
     process_dataset(dataset_path)
