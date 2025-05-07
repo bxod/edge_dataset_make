@@ -1,75 +1,110 @@
-# pip install ultralytics
-# pip install pillow
+# pip install ultralytics pillow
 
-import os
-import math
-import xml.etree.ElementTree as ET
-from PIL import Image
+import os, math, xml.etree.ElementTree as ET
+from pathlib import Path
+from typing import List
+
+from PIL import Image, ImageOps
 from ultralytics import YOLO
 
-model = YOLO("yolov8x.pt")  # Nano (yolov8n.pt) Small (yolov8s.pt) Medium (yolov8m.pt) Large (yolov8l.pt) Extra-large (yolov8x.pt) Bigger model - better labeling
-model.to('cuda') # You may comment this line out if you want to run the detector using CPU
+
+MODEL_WEIGHTS   = "yolov8x.pt"
+DEVICE          = "cuda"              # or "cpu"
+TARGET_SIZE     = 640
+BORDER_COLOR    = (0, 0, 0)           # (255,255,255) for white
+DELETE_ORIGINAL = True
+
+
+model = YOLO(MODEL_WEIGHTS).to(DEVICE)
+
+def get_person_boxes(img: Image.Image) -> List[List[float]]:
+    res = model.predict(source=img, classes=[0], verbose=False, conf=0.25)[0] #We are only detecting humans
+    return [box.xyxy[0].tolist() for box in res.boxes]
+
+def preprocess_image(img_path: Path) -> Path:
+    img = Image.open(img_path).convert("RGB")
+    img = ImageOps.exif_transpose(img)                
+
+    w, h = img.size
+
+    if h > w:
+        diff = h - w
+        pad_lr = diff // 4                    
+        img = ImageOps.expand(img,            
+                              border=(pad_lr, 0, pad_lr, 0),
+                              fill=BORDER_COLOR)
+        w += 2 * pad_lr                      
+        boxes = get_person_boxes(img)
+        cy = (min(b[1] for b in boxes) + max(b[3] for b in boxes))/2 if boxes else h/2
+        top = int(max(0, cy - w/2))
+        top = min(top, h - w)                  
+        img = img.crop((0, top, w, top + w))   
+        h = w                                   
+
+    if w != h:
+        side = max(w, h)
+        img = ImageOps.expand(img,
+                              ((side - w)//2, (side - h)//2,
+                               (side - w + 1)//2, (side - h + 1)//2),
+                              fill=BORDER_COLOR)
+        w = h = side
+
+    img = img.resize((TARGET_SIZE, TARGET_SIZE), Image.LANCZOS)
+    out_path = img_path.with_name(f"{img_path.stem}_sq{TARGET_SIZE}{img_path.suffix}")
+    img.save(out_path, quality=95)
+    return out_path
+
 
 def create_pascal_voc_xml(img_path, class_name, detections):
     img = Image.open(img_path)
-    width, height = img.size
-    depth = len(img.getbands())
+    w, h = img.size
+    d = len(img.getbands())
 
-    # XML structure
-    annotation = ET.Element("annotation")
-    ET.SubElement(annotation, "folder").text = class_name
-    ET.SubElement(annotation, "filename").text = os.path.basename(img_path)
-    ET.SubElement(annotation, "path").text = os.path.abspath(img_path)
-    source = ET.SubElement(annotation, "source")
-    ET.SubElement(source, "database").text = "Unknown"
-    size = ET.SubElement(annotation, "size")
-    ET.SubElement(size, "width").text = str(width)
-    ET.SubElement(size, "height").text = str(height)
-    ET.SubElement(size, "depth").text = str(depth)
-    ET.SubElement(annotation, "segmented").text = "0"
+    ann = ET.Element("annotation")
+    ET.SubElement(ann, "folder").text, ET.SubElement(ann, "filename").text = class_name, os.path.basename(img_path)
+    ET.SubElement(ann, "path").text = os.path.abspath(img_path)
 
-    for det in detections:
-        x1, y1, x2, y2 = det
-        x1 = max(0, math.floor(x1))
-        y1 = max(0, math.floor(y1))
-        x2 = min(width, math.floor(x2))
-        y2 = min(height, math.floor(y2))
-        obj = ET.SubElement(annotation, "object")
-        ET.SubElement(obj, "name").text = class_name
-        ET.SubElement(obj, "pose").text = "Unspecified"
-        ET.SubElement(obj, "truncated").text = "0"
-        ET.SubElement(obj, "difficult").text = "0"
-        bndbox = ET.SubElement(obj, "bndbox")
-        ET.SubElement(bndbox, "xmin").text = str(x1)
-        ET.SubElement(bndbox, "ymin").text = str(y1)
-        ET.SubElement(bndbox, "xmax").text = str(x2)
-        ET.SubElement(bndbox, "ymax").text = str(y2)
-    return ET.ElementTree(annotation)
+    src = ET.SubElement(ann, "source"); ET.SubElement(src, "database").text = "Unknown"
+    sz  = ET.SubElement(ann, "size")
+    for t, v in (("width", w), ("height", h), ("depth", d)):
+        ET.SubElement(sz, t).text = str(v)
+    ET.SubElement(ann, "segmented").text = "0"
 
-def process_dataset(root_dir):
-    for class_name in os.listdir(root_dir):
-        class_dir = os.path.join(root_dir, class_name)
-        if not os.path.isdir(class_dir):
-            continue
-        for filename in os.listdir(class_dir):
-            file_path = os.path.join(class_dir, filename)
-            ext = os.path.splitext(filename)[1].lower()
-            if ext not in [".jpg", ".jpeg", ".png"]:
+    for x1, y1, x2, y2 in detections:
+        obj = ET.SubElement(ann, "object")
+        ET.SubElement(obj, "name").text, ET.SubElement(obj, "pose").text = class_name, "Unspecified"
+        ET.SubElement(obj, "truncated").text, ET.SubElement(obj, "difficult").text = "0", "0"
+        bb = ET.SubElement(obj, "bndbox")
+        for tag, val in zip(("xmin", "ymin", "xmax", "ymax"),
+                            map(lambda v: max(0, int(v)), (x1, y1, x2, y2))):
+            ET.SubElement(bb, tag).text = str(val)
+
+    return ET.ElementTree(ann)
+
+
+def process_dataset(root_dir: str | Path):
+    root_dir = Path(root_dir)
+    for class_dir in root_dir.iterdir():
+        if not class_dir.is_dir(): continue
+        for img_path in class_dir.iterdir():
+            if img_path.suffix.lower() not in {'.jpg', '.jpeg', '.png'}: continue
+
+            processed = preprocess_image(img_path)
+            results   = model.predict(source=str(processed), classes=[0], verbose=False)
+            boxes     = [b.xyxy[0].tolist() for r in results for b in r.boxes]
+            if not boxes:
+                print(f"{processed.name}: no person → removed.")
+                processed.unlink(missing_ok=True)
+                if DELETE_ORIGINAL: img_path.unlink(missing_ok=True)
                 continue
-            results = model.predict(source=file_path, classes=[0], verbose=False)
-            person_boxes = []
-            for result in results:
-                for box in result.boxes:
-                    xyxy = box.xyxy[0].tolist()
-                    person_boxes.append(xyxy)
-            if not person_boxes:
-                print(f"Warning: No person detected in {file_path}, skipping annotation.")
-                continue
-            xml_tree = create_pascal_voc_xml(file_path, class_name, person_boxes)
-            xml_path = os.path.splitext(file_path)[0] + ".xml"
-            xml_tree.write(xml_path)
-            print(f"Saved annotation for {file_path} -> {xml_path}")
+
+            xml = create_pascal_voc_xml(processed, class_dir.name, boxes)
+            xml.write(processed.with_suffix(".xml"))
+            print(f"{processed.name} annotated.")
+
+            if DELETE_ORIGINAL:
+                img_path.unlink(missing_ok=True)
+
 
 if __name__ == "__main__":
-    dataset_path = "./dataset_root"
-    process_dataset(dataset_path)
+    process_dataset("./images")
