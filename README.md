@@ -87,5 +87,3 @@ It is important to collect dataset of at least 4 classes to avoid issues with th
 * **xml\_maker.py**: Run the auto-labeling model and generate VOC XML files.
 
 ---
-
-## Important: Leave a star! ⭐
